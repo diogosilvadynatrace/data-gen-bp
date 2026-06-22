@@ -1,0 +1,7 @@
+collector/active.yaml
+.env
+bindplane-agent-data/
+.claude/
+__pycache__/
+*.pyc
+*.pyo

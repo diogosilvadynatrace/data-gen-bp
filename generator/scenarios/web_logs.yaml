@@ -1,0 +1,37 @@
+name: web_app_logs
+description: "Web app logs with PII (email, IP, credit card) — ideal for masking demo"
+type: logs
+rate: 5
+service:
+  name: web-frontend
+  version: "2.3.1"
+  namespace: ecommerce
+
+templates:
+  - weight: 35
+    severity: INFO
+    body: "{method} {path} {status} {latency_ms}ms user={email} ip={ip_public} ua={user_agent}"
+
+  - weight: 20
+    severity: INFO
+    body: "User {email} authenticated successfully from {ip_public} — session={uuid}"
+
+  - weight: 15
+    severity: INFO
+    body: "Payment {uuid} processed: customer={name} card={credit_card} amount=${amount} country={country}"
+
+  - weight: 10
+    severity: WARN
+    body: "Rate limit hit for ip={ip_public} user={email} — {latency_ms}ms response"
+
+  - weight: 10
+    severity: WARN
+    body: "Failed login for {email} from {ip_public} (attempt 3/5)"
+
+  - weight: 5
+    severity: ERROR
+    body: "Unhandled exception processing payment for {email}: {error} card={credit_card}"
+
+  - weight: 5
+    severity: DEBUG
+    body: "DB query took {latency_ms}ms for user={email} at route={path}"

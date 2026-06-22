@@ -1,0 +1,119 @@
+# ────────────────────────────────────────────────────────────────────────────
+# BINDPLANE-STYLE MODE — data masking + cost reduction
+#
+# Demonstrates two key BindPlane value pillars:
+#
+#   1. DATA MASKING  (transform/mask_pii)
+#      Regex-based redaction of emails, credit cards, SSNs and phone numbers
+#      directly in log bodies — before data leaves your environment.
+#
+#   2. COST REDUCTION
+#      a) transform/drop_pod_label  — removes high-cardinality pod labels from
+#         metrics, reducing time-series cardinality dramatically.
+#      b) filter/drop_noisy_metrics — drops low-value, high-volume metrics.
+#      c) filter/drop_debug_logs    — drops DEBUG logs entirely.
+#
+# Switch between raw.yaml and this file with:
+#   make raw       → no processing
+#   make processed → this file
+# ────────────────────────────────────────────────────────────────────────────
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    limit_mib: 512
+    spike_limit_mib: 128
+    check_interval: 5s
+
+  batch:
+    timeout: 2s
+    send_batch_size: 512
+
+  resource/loki_labels:
+    attributes:
+      - action: upsert
+        key: loki.resource.labels
+        value: "service.name, service.namespace"
+
+  # ── 1. DATA MASKING ──────────────────────────────────────────────────────
+  transform/mask_pii:
+    error_mode: ignore
+    log_statements:
+      - context: log
+        statements:
+          # Email addresses  →  [EMAIL]
+          - replace_pattern(body, "\\b[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]{2,}\\b", "[EMAIL]")
+          # Credit / debit card numbers (13-19 digits, optional separators)  →  [CARD]
+          - replace_pattern(body, "\\b(?:\\d[ \\-]?){13,18}\\d\\b", "[CARD]")
+          # US SSN  →  [SSN]
+          - replace_pattern(body, "\\b\\d{3}[\\-\\s]\\d{2}[\\-\\s]\\d{4}\\b", "[SSN]")
+          # US phone numbers  →  [PHONE]
+          - replace_pattern(body, "\\b(\\+?1[\\s.\\-]?)?(\\(?\\d{3}\\)?[\\s.\\-]?)\\d{3}[\\s.\\-]\\d{4}\\b", "[PHONE]")
+
+  # ── 2a. COST REDUCTION — remove high-cardinality pod label ───────────────
+  # Before: container × pod × namespace × node  (thousands of series)
+  # After:  container × namespace × node        (tens of series)
+  transform/drop_pod_label:
+    error_mode: ignore
+    metric_statements:
+      - context: datapoint
+        statements:
+          - delete_key(attributes, "pod")
+          - delete_key(attributes, "pod_id")
+          - delete_key(attributes, "instance")
+
+  # ── 2b. COST REDUCTION — drop noisy / low-value metrics entirely ─────────
+  filter/drop_noisy_metrics:
+    error_mode: ignore
+    metrics:
+      metric:
+        - 'name == "container_network_transmit_bytes_total"'
+
+  # ── 2c. COST REDUCTION — drop DEBUG logs (often 40-60% of log volume) ────
+  filter/drop_debug_logs:
+    error_mode: ignore
+    logs:
+      log_record:
+        - 'severity_number < SEVERITY_NUMBER_INFO'
+
+exporters:
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: demo
+
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  debug:
+    verbosity: normal
+    sampling_initial: 2
+    sampling_thereafter: 500
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/tempo, debug]
+
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/drop_pod_label, filter/drop_noisy_metrics, batch]
+      exporters: [prometheus]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/mask_pii, filter/drop_debug_logs, resource/loki_labels, batch]
+      exporters: [loki, debug]

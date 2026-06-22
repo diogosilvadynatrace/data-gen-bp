@@ -1,0 +1,409 @@
+#!/usr/bin/env python3
+"""
+BindPlane Demo - Data Generator
+Generates configurable metrics, logs, and traces with realistic/sensitive data via OTLP.
+Add new scenarios by dropping YAML files into the scenarios/ directory.
+"""
+
+import os
+import sys
+import time
+import random
+import uuid
+import yaml
+import threading
+import logging
+import argparse
+import itertools
+from pathlib import Path
+
+from faker import Faker
+
+# ─── OpenTelemetry imports ────────────────────────────────────────────────────
+
+from opentelemetry import trace as otel_trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+from opentelemetry.metrics import Observation
+
+from opentelemetry.sdk.resources import Resource
+
+# Logs SDK (experimental/stable depending on version — try both)
+try:
+    from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+    from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+    from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+    from opentelemetry._logs import set_logger_provider
+except ImportError:
+    from opentelemetry.sdk.logs import LoggerProvider, LoggingHandler
+    from opentelemetry.sdk.logs.export import BatchLogRecordProcessor
+    from opentelemetry.exporter.otlp.proto.grpc.exporter import OTLPLogExporter
+    from opentelemetry._logs import set_logger_provider
+
+# ─── Globals ─────────────────────────────────────────────────────────────────
+
+fake = Faker()
+root_log = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s  %(levelname)-7s  %(threadName)s  %(message)s",
+)
+
+OTLP_ENDPOINT = os.getenv("OTLP_ENDPOINT", "localhost:4317")
+SCENARIOS_DIR = os.getenv("SCENARIOS_DIR", "./scenarios")
+
+def _env_bool(name: str, default: bool = True) -> bool:
+    return os.getenv(name, str(default)).strip().lower() not in ("false", "0", "no", "off")
+
+ENABLE_LOGS    = _env_bool("ENABLE_LOGS",    True)
+ENABLE_METRICS = _env_bool("ENABLE_METRICS", True)
+ENABLE_TRACES  = _env_bool("ENABLE_TRACES",  True)
+
+# Pre-generate pod names so cardinality is large but bounded
+_PODS = [f"app-{fake.lexify('????')}-{fake.lexify('?????')}" for _ in range(20)]
+_JOB_IDS = [str(uuid.uuid4())[:8] for _ in range(8)]
+
+
+# ─── Template resolver ────────────────────────────────────────────────────────
+
+_PLACEHOLDERS = {
+    "{email}": lambda: fake.email(),
+    "{name}": lambda: fake.name(),
+    "{first_name}": lambda: fake.first_name(),
+    "{last_name}": lambda: fake.last_name(),
+    "{ip}": lambda: fake.ipv4(),
+    "{ip_public}": lambda: fake.ipv4_public(),
+    "{credit_card}": lambda: "-".join(fake.credit_card_number(card_type="visa")[i:i+4] for i in range(0, 16, 4)),
+    "{ssn}": lambda: fake.ssn(),
+    "{phone}": lambda: fake.phone_number(),
+    "{uuid}": lambda: str(uuid.uuid4()),
+    "{amount}": lambda: f"{random.uniform(9.99, 999.99):.2f}",
+    "{error}": lambda: random.choice(
+        ["Connection timeout", "NullPointerException", "OutOfMemoryError", "PermissionDenied"]
+    ),
+    "{user_agent}": lambda: fake.user_agent(),
+    "{country}": lambda: fake.country_code(),
+    "{city}": lambda: fake.city(),
+    "{url}": lambda: fake.uri(),
+    "{status}": lambda: str(random.choice([200, 200, 201, 400, 401, 403, 404, 500])),
+    "{method}": lambda: random.choice(["GET", "POST", "PUT", "DELETE", "PATCH"]),
+    "{path}": lambda: random.choice(
+        ["/api/users", "/api/orders", "/api/products", "/api/payments", "/api/auth", "/health"]
+    ),
+    "{latency_ms}": lambda: str(random.randint(5, 3000)),
+    "{pod}": lambda: random.choice(_PODS),
+    "{job_id}": lambda: random.choice(_JOB_IDS),
+    "{node}": lambda: f"node-{random.randint(1, 8)}",
+}
+
+
+def resolve(template: str) -> str:
+    if not isinstance(template, str):
+        return str(template)
+    result = template
+    for placeholder, fn in _PLACEHOLDERS.items():
+        while placeholder in result:
+            result = result.replace(placeholder, str(fn()), 1)
+    return result
+
+
+# ─── Resource helper ─────────────────────────────────────────────────────────
+
+def make_resource(svc: dict) -> Resource:
+    return Resource.create(
+        {
+            "service.name": svc.get("name", "demo-service"),
+            "service.version": svc.get("version", "1.0.0"),
+            "service.namespace": svc.get("namespace", "demo"),
+        }
+    )
+
+
+# ─── Label combination helper (for metrics) ───────────────────────────────────
+
+def label_combos(label_cfg: dict) -> list:
+    if not label_cfg:
+        return [{}]
+    resolved = {}
+    for k, v in label_cfg.items():
+        if v == "random_pod":
+            resolved[k] = _PODS
+        elif v == "random_job":
+            resolved[k] = _JOB_IDS
+        elif isinstance(v, list):
+            resolved[k] = [str(x) for x in v]
+        else:
+            resolved[k] = [str(v)]
+    keys = list(resolved.keys())
+    combos = list(itertools.product(*[resolved[k] for k in keys]))
+    if len(combos) > 200:
+        combos = random.sample(combos, 200)
+    return [dict(zip(keys, c)) for c in combos]
+
+
+# ─── LOG scenario ─────────────────────────────────────────────────────────────
+
+def run_log_scenario(cfg: dict, stop: threading.Event):
+    name = cfg["name"]
+    rate = float(cfg.get("rate", 1.0))
+    templates = cfg.get("templates", [])
+    resource = make_resource(cfg.get("service", {}))
+
+    exporter = OTLPLogExporter(endpoint=OTLP_ENDPOINT, insecure=True)
+    provider = LoggerProvider(resource=resource)
+    provider.add_log_record_processor(BatchLogRecordProcessor(exporter))
+
+    handler = LoggingHandler(level=logging.DEBUG, logger_provider=provider)
+    logger = logging.getLogger(f"otel.scenario.{name}")
+    logger.addHandler(handler)
+    logger.setLevel(logging.DEBUG)
+    logger.propagate = False
+
+    severity_map = {
+        "DEBUG": logging.DEBUG,
+        "INFO": logging.INFO,
+        "WARN": logging.WARNING,
+        "WARNING": logging.WARNING,
+        "ERROR": logging.ERROR,
+        "FATAL": logging.CRITICAL,
+    }
+    weights = [t.get("weight", 1) for t in templates]
+    interval = 1.0 / rate
+
+    root_log.info(f"[{name}] log scenario started — {rate:.1f} logs/s")
+    while not stop.is_set():
+        tmpl = random.choices(templates, weights=weights)[0]
+        severity = severity_map.get(tmpl.get("severity", "INFO"), logging.INFO)
+        body = resolve(tmpl.get("body", "log event"))
+        logger.log(severity, body)
+        time.sleep(interval)
+
+
+# ─── METRIC scenario ──────────────────────────────────────────────────────────
+
+def run_metric_scenario(cfg: dict, stop: threading.Event):
+    name = cfg["name"]
+    export_interval_s = int(cfg.get("export_interval", 10))
+    metrics_cfg = cfg.get("metrics", [])
+    resource = make_resource(cfg.get("service", {}))
+
+    exporter = OTLPMetricExporter(endpoint=OTLP_ENDPOINT, insecure=True)
+    reader = PeriodicExportingMetricReader(
+        exporter, export_interval_millis=export_interval_s * 1000
+    )
+    provider = MeterProvider(resource=resource, metric_readers=[reader])
+    meter = provider.get_meter(name)
+
+    counters: dict = {}
+    histograms: dict = {}
+
+    for m in metrics_cfg:
+        mname = m["name"]
+        mtype = m.get("type", "gauge")
+        unit = m.get("unit", "1")
+        desc = m.get("description", "")
+        val_cfg = m.get("value", {"min": 0, "max": 100})
+        lbl_cfg = m.get("labels", {})
+
+        if mtype == "counter":
+            counters[mname] = (
+                meter.create_counter(mname, unit=unit, description=desc),
+                val_cfg,
+                lbl_cfg,
+            )
+
+        elif mtype == "histogram":
+            histograms[mname] = (
+                meter.create_histogram(mname, unit=unit, description=desc),
+                val_cfg,
+                lbl_cfg,
+            )
+
+        elif mtype == "gauge":
+            # Closures need explicit capture of val_cfg / lbl_cfg
+            def make_cb(vc, lc):
+                def cb(options):
+                    return [
+                        Observation(
+                            value=random.uniform(vc.get("min", 0), vc.get("max", 100)),
+                            attributes=combo,
+                        )
+                        for combo in label_combos(lc)
+                    ]
+                return cb
+
+            meter.create_observable_gauge(
+                mname, callbacks=[make_cb(val_cfg, lbl_cfg)], unit=unit, description=desc
+            )
+
+    root_log.info(f"[{name}] metric scenario started — export every {export_interval_s}s")
+    while not stop.is_set():
+        for _mname, (instr, vc, lc) in counters.items():
+            for combo in label_combos(lc):
+                instr.add(
+                    random.uniform(vc.get("min", 0.001), vc.get("max", 1.0)),
+                    attributes=combo,
+                )
+        for _mname, (instr, vc, lc) in histograms.items():
+            for combo in label_combos(lc):
+                instr.record(
+                    random.uniform(vc.get("min", 1), vc.get("max", 1000)),
+                    attributes=combo,
+                )
+        time.sleep(export_interval_s)
+
+
+# ─── TRACE scenario ───────────────────────────────────────────────────────────
+
+def run_trace_scenario(cfg: dict, stop: threading.Event):
+    name = cfg["name"]
+    rate = float(cfg.get("rate", 1.0))
+    spans_cfg = cfg.get("spans", [])
+    resource = make_resource(cfg.get("service", {}))
+
+    exporter = OTLPSpanExporter(endpoint=OTLP_ENDPOINT, insecure=True)
+    provider = TracerProvider(resource=resource)
+    provider.add_span_processor(BatchSpanProcessor(exporter))
+    tracer = provider.get_tracer(name)
+
+    def emit(span_cfg: dict):
+        span_name = span_cfg.get("name", "span")
+        attrs = {k: resolve(str(v)) for k, v in span_cfg.get("attributes", {}).items()}
+        dur_range = span_cfg.get("duration_ms", [10, 200])
+        error_rate = span_cfg.get("error_rate", 0.03)
+        duration_s = random.uniform(dur_range[0], dur_range[1]) / 1000.0
+
+        with tracer.start_as_current_span(span_name, attributes=attrs) as span:
+            if random.random() < error_rate:
+                span.set_status(otel_trace.StatusCode.ERROR, "simulated error")
+                span.record_exception(Exception(f"{span_name} failed"))
+            for child in span_cfg.get("children", []):
+                emit(child)
+            time.sleep(duration_s)
+
+    interval = 1.0 / rate
+    root_log.info(f"[{name}] trace scenario started — {rate:.1f} traces/s")
+    while not stop.is_set():
+        for span_cfg in spans_cfg:
+            emit(span_cfg)
+        time.sleep(interval)
+
+
+# ─── Loader ───────────────────────────────────────────────────────────────────
+
+_RUNNERS = {
+    "logs": run_log_scenario,
+    "metrics": run_metric_scenario,
+    "traces": run_trace_scenario,
+}
+
+
+_SIGNAL_ENABLED = {
+    "logs":    lambda: ENABLE_LOGS,
+    "metrics": lambda: ENABLE_METRICS,
+    "traces":  lambda: ENABLE_TRACES,
+}
+
+
+def run_scenario_file(path: Path, stop: threading.Event):
+    with open(path) as f:
+        cfg = yaml.safe_load(f)
+    signal_type = cfg.get("type", "logs")
+    runner = _RUNNERS.get(signal_type)
+    if runner is None:
+        root_log.error(f"Unknown scenario type in {path}")
+        return
+    runner(cfg, stop)
+
+
+# ─── Main ─────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(description="BindPlane Demo — Data Generator")
+    parser.add_argument(
+        "--dir",
+        default=SCENARIOS_DIR,
+        help="Directory with scenario YAML files (default: ./scenarios)",
+    )
+    parser.add_argument("--scenario", nargs="+", help="Run specific scenario(s) by name")
+    parser.add_argument("--list", action="store_true", help="List available scenarios and exit")
+    args = parser.parse_args()
+
+    scenarios_dir = Path(args.dir)
+    all_files = sorted(scenarios_dir.glob("*.yaml"))
+
+    enabled_signals = [s for s, fn in _SIGNAL_ENABLED.items() if fn()]
+    disabled_signals = [s for s, fn in _SIGNAL_ENABLED.items() if not fn()]
+
+    if args.list:
+        print(f"\nAvailable scenarios in {scenarios_dir}:\n")
+        for f in all_files:
+            with open(f) as fp:
+                c = yaml.safe_load(fp)
+            sig = c.get("type", "?")
+            status = "ON " if sig not in disabled_signals else "OFF"
+            print(f"  [{status}]  {f.stem:<30} [{sig:<8}]  {c.get('description', '')}")
+        print()
+        if disabled_signals:
+            print(f"  Disabled signals: {', '.join(disabled_signals)}\n")
+        return
+
+    files = (
+        [scenarios_dir / f"{s}.yaml" for s in args.scenario]
+        if args.scenario
+        else all_files
+    )
+
+    if not files:
+        root_log.error(f"No scenario files found in {scenarios_dir}")
+        sys.exit(1)
+
+    if disabled_signals:
+        root_log.info(f"Signals disabled: {', '.join(disabled_signals)}")
+    root_log.info(f"Signals enabled:  {', '.join(enabled_signals) or 'none'}")
+
+    stop = threading.Event()
+    threads = []
+
+    for f in files:
+        if not f.exists():
+            root_log.warning(f"Scenario file not found: {f}")
+            continue
+        with open(f) as fp:
+            cfg = yaml.safe_load(fp)
+        signal_type = cfg.get("type", "logs")
+        if signal_type in disabled_signals:
+            root_log.info(f"Skipped scenario {f.stem!r} (signal '{signal_type}' disabled)")
+            continue
+        t = threading.Thread(
+            target=run_scenario_file,
+            args=(f, stop),
+            daemon=True,
+            name=f.stem,
+        )
+        t.start()
+        threads.append(t)
+        root_log.info(f"Loaded scenario: {f.stem}")
+
+    root_log.info(
+        f"\n  {len(threads)} scenario(s) running → {OTLP_ENDPOINT}\n"
+        "  Press Ctrl+C to stop.\n"
+    )
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        root_log.info("Stopping all scenarios…")
+        stop.set()
+        for t in threads:
+            t.join(timeout=5)
+
+
+if __name__ == "__main__":
+    main()

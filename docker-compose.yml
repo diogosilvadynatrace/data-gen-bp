@@ -1,0 +1,110 @@
+services:
+
+  # ── Data Generator ──────────────────────────────────────────────────────────
+  # Lê todos os YAMLs de generator/scenarios/ e envia telemetria via OTLP.
+  # OTLP_ENDPOINT aponta para o agente ativo (bindplane-agent ou otelcol).
+  # O SDK OTel faz retry automático — não precisa de depends_on.
+  generator:
+    build:
+      context: ./generator
+      dockerfile: Dockerfile
+    environment:
+      OTLP_ENDPOINT: ${OTLP_ENDPOINT:-bindplane-agent:4317}
+      SCENARIOS_DIR: /app/scenarios
+      ENABLE_LOGS: ${ENABLE_LOGS:-true}
+      ENABLE_METRICS: ${ENABLE_METRICS:-true}
+      ENABLE_TRACES: ${ENABLE_TRACES:-true}
+    volumes:
+      - ./generator/scenarios:/app/scenarios:ro
+    restart: unless-stopped
+
+  # ── BindPlane Agent ─────────────────────────────────────────────────────────
+  # Agente gerenciado pelo BindPlane OP.
+  # O pipeline completo (mascaramento, filtros, roteamento) é configurado
+  # pela UI do BindPlane — nenhum YAML local necessário.
+  #
+  # Pré-requisito: .env com BINDPLANE_SECRET_KEY preenchido.
+  # Ativar: make start  (perfil "bindplane")
+  bindplane-agent:
+    image: ghcr.io/observiq/bindplane-agent:latest
+    profiles: [bindplane]
+    environment:
+      OPAMP_ENDPOINT: ${BINDPLANE_ENDPOINT:-https://app.bindplane.com}
+      OPAMP_SECRET_KEY: ${BINDPLANE_SECRET_KEY}
+      OPAMP_AGENT_NAME: ${BINDPLANE_AGENT_NAME:-data-gen-demo-agent}
+      OPAMP_LABELS: ${BINDPLANE_LABELS:-environment=demo,project=data-gen-demo}
+    ports:
+      - "4317:4317"    # OTLP gRPC
+      - "4318:4318"    # OTLP HTTP
+      - "13133:13133"  # health check
+    volumes:
+      - ./bindplane-agent-data:/etc/otel   # persiste manager.yaml (agent_id) + config.yaml
+    restart: unless-stopped
+
+  # ── OTel Collector standalone ───────────────────────────────────────────────
+  # Alternativa sem BindPlane — útil para mostrar o "antes" da solução.
+  # Pipeline controlado por collector/active.yaml (raw ou bindplane-style).
+  #
+  # Ativar: make start-standalone  (perfil "standalone")
+  otelcol:
+    image: otel/opentelemetry-collector-contrib:0.103.0
+    profiles: [standalone]
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./collector/active.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+      - "8888:8888"
+      - "8889:8889"
+    restart: unless-stopped
+
+  # ── Backends de visualização ────────────────────────────────────────────────
+  # Disponíveis em ambos os modos.
+  # No modo BindPlane, configure os destinos diretamente pela UI do BindPlane.
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    profiles: [prometheus]
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=24h"
+      - "--web.enable-remote-write-receiver"   # necessário para receber push do BindPlane agent
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.0.0
+    profiles: [loki]
+    command: ["-config.file=/etc/loki/local-config.yaml"]
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:2.5.0
+    profiles: [tempo]
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./monitoring/tempo.yaml:/etc/tempo.yaml:ro
+    ports:
+      - "3200:3200"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    profiles: [grafana]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_FEATURE_TOGGLES_ENABLE: "traceToMetrics metricsSummary"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    restart: unless-stopped
+

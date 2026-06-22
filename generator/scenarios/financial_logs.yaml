@@ -1,0 +1,33 @@
+name: financial_logs
+description: "Financial/banking logs with SSN, card numbers, PII — data masking demo"
+type: logs
+rate: 3
+service:
+  name: payment-service
+  version: "1.8.4"
+  namespace: fintech
+
+templates:
+  - weight: 30
+    severity: INFO
+    body: "Transaction approved: customer={name} ssn={ssn} card={credit_card} amount=${amount} ip={ip}"
+
+  - weight: 25
+    severity: INFO
+    body: "KYC verification: name={name} ssn={ssn} phone={phone} email={email} city={city}"
+
+  - weight: 15
+    severity: WARN
+    body: "Fraud alert triggered: card={credit_card} amount=${amount} — flagged for review user={email}"
+
+  - weight: 15
+    severity: INFO
+    body: "Refund processed: {email} amount=${amount} card={credit_card} ref={uuid}"
+
+  - weight: 10
+    severity: ERROR
+    body: "Payment declined: {name} card={credit_card} — insufficient funds — contact={phone}"
+
+  - weight: 5
+    severity: ERROR
+    body: "PCI compliance violation detected: raw card data in request body for user={email} ssn={ssn}"
