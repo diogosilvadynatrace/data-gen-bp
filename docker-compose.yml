@@ -18,6 +18,26 @@ services:
       - ./generator/scenarios:/app/scenarios:ro
     restart: unless-stopped
 
+  # ── Manager UI ──────────────────────────────────────────────────────────────
+  # Interface web para ligar/desligar sinais, cenários e backends locais.
+  # Acesse em http://localhost:8080
+  manager:
+    build:
+      context: ./manager
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./.env:/config/.env
+      - ./generator/scenarios:/scenarios
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      ENV_FILE: /config/.env
+      SCENARIOS_DIR: /scenarios
+      GENERATOR_CONTAINER: data-gen-generator-1
+      COMPOSE_PROJECT: data-gen
+    restart: unless-stopped
+
   # ── BindPlane Agent ─────────────────────────────────────────────────────────
   # Agente gerenciado pelo BindPlane OP.
   # O pipeline completo (mascaramento, filtros, roteamento) é configurado

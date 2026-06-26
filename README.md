@@ -51,6 +51,8 @@ O projeto tem três camadas:
 |---|---|---|
 | `web_logs.yaml` | Logs | Logs de acesso web com email, IP, cartão de crédito |
 | `financial_logs.yaml` | Logs | Transações financeiras com SSN, cartão, telefone |
+| `iis_logs.yaml` | Logs | Logs de acesso IIS (W3C) com email, IP, user agent |
+| `windows_event_logs.yaml` | Logs | Windows Event Log (Security, System, Application) com PII |
 | `k8s_metrics.yaml` | Métricas | Métricas de containers Kubernetes com alta cardinalidade (label `pod`) |
 | `checkout_traces.yaml` | Traces | Fluxo de checkout e-commerce com PII nos atributos dos spans |
 

@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BindPlane Demo — Manager</title>
+  <style>
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --surface2:  #22263a;
+      --border:    #2e3350;
+      --text:      #e2e8f0;
+      --muted:     #8892b0;
+      --accent:    #6366f1;
+      --green:     #22c55e;
+      --red:       #ef4444;
+      --yellow:    #eab308;
+      --blue:      #38bdf8;
+      --purple:    #a78bfa;
+      --radius:    8px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .logo { display: flex; align-items: center; gap: 10px; }
+    .logo-icon { font-size: 20px; }
+    .logo h1 { font-size: 15px; font-weight: 600; }
+    .logo h1 span { color: var(--muted); font-weight: 400; }
+
+    .gen-status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--yellow);
+      flex-shrink: 0;
+    }
+    .dot.running { background: var(--green); animation: pulse 2s infinite; }
+    .dot.stopped, .dot.exited { background: var(--red); }
+
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* ── Layout ── */
+    main {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 28px 20px;
+      display: grid;
+      gap: 20px;
+    }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .card-header h2 {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+    }
+
+    /* ── Group header ── */
+    .group-header {
+      padding: 8px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface2);
+    }
+    .group-header span {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--muted);
+    }
+
+    /* ── Toggle rows ── */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 11px 20px 11px 28px;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+    }
+    .toggle-row:last-child { border-bottom: none; }
+    .toggle-row:hover { background: var(--surface2); }
+
+    .row-left { display: flex; align-items: center; gap: 10px; }
+
+    .row-text { display: flex; flex-direction: column; gap: 2px; }
+    .row-label { font-size: 13px; font-weight: 500; }
+    .row-desc  { font-size: 11px; color: var(--muted); }
+
+    .row-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+
+    /* Type badge */
+    .type-badge {
+      font-size: 9px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .type-logs    { background: rgba(99,102,241,.2); color: var(--accent); }
+    .type-metrics { background: rgba(56,189,248,.2); color: var(--blue); }
+    .type-traces  { background: rgba(167,139,250,.2); color: var(--purple); }
+
+    /* Service name tag */
+    .service-tag {
+      font-size: 10px;
+      font-weight: 500;
+      color: var(--muted);
+      background: rgba(255,255,255,.05);
+      border: 1px solid var(--border);
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+
+    /* Container status badge */
+    .status-badge {
+      font-size: 10px;
+      padding: 2px 7px;
+      border-radius: 20px;
+      font-weight: 500;
+    }
+    .status-running   { background: rgba(34,197,94,.15); color: var(--green); }
+    .status-exited,
+    .status-stopped   { background: rgba(239,68,68,.15); color: var(--red); }
+    .status-not_found { background: rgba(139,148,158,.15); color: var(--muted); }
+    .status-unknown   { background: rgba(234,179,8,.15); color: var(--yellow); }
+
+    /* ── Toggle switch ── */
+    .switch {
+      position: relative;
+      width: 38px;
+      height: 21px;
+      flex-shrink: 0;
+    }
+    .switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .slider {
+      position: absolute;
+      inset: 0;
+      background: #374151;
+      border-radius: 21px;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .slider::before {
+      content: '';
+      position: absolute;
+      width: 15px; height: 15px;
+      left: 3px; top: 3px;
+      background: #fff;
+      border-radius: 50%;
+      transition: transform .2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,.3);
+    }
+    .switch input:checked + .slider { background: var(--accent); }
+    .switch input:checked + .slider::before { transform: translateX(17px); }
+    .switch input:disabled + .slider { opacity: .4; cursor: not-allowed; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed;
+      bottom: 24px; right: 24px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 11px 16px;
+      font-size: 13px;
+      transform: translateY(70px);
+      opacity: 0;
+      transition: all .25s;
+      z-index: 999;
+      max-width: 300px;
+      pointer-events: none;
+    }
+    #toast.show { transform: translateY(0); opacity: 1; }
+    #toast.ok  { border-left: 3px solid var(--green); }
+    #toast.err { border-left: 3px solid var(--red); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <span class="logo-icon">⚡</span>
+    <h1>BindPlane Demo <span>/ Manager</span></h1>
+  </div>
+  <div class="gen-status">
+    <div class="dot" id="gen-dot"></div>
+    <span id="gen-label">carregando…</span>
+  </div>
+</header>
+
+<main>
+
+  <div class="card">
+    <div class="card-header"><h2>📋 &nbsp;Cenários</h2></div>
+    <div id="scenarios-body"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h2>🗄️ &nbsp;Backends Locais</h2></div>
+    <div id="backends-body"></div>
+  </div>
+
+</main>
+
+<div id="toast"></div>
+
+<script>
+const BACKEND_META = {
+  ENABLE_PROMETHEUS: { label: 'Prometheus', desc: 'Coleta de métricas — porta 9090' },
+  ENABLE_LOKI:       { label: 'Loki',       desc: 'Armazenamento de logs — porta 3100' },
+  ENABLE_TEMPO:      { label: 'Tempo',      desc: 'Armazenamento de traces — porta 3200' },
+  ENABLE_GRAFANA:    { label: 'Grafana',    desc: 'Dashboards — porta 3000' },
+};
+
+let busy = false;
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function toast(msg, ok = true) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show ' + (ok ? 'ok' : 'err');
+  clearTimeout(el._t);
+  el._t = setTimeout(() => { el.className = ''; }, 3000);
+}
+
+// ── DOM builders ──────────────────────────────────────────────────────────
+function buildSwitch(checked, onToggle) {
+  const label = document.createElement('label');
+  label.className = 'switch';
+  const input = document.createElement('input');
+  input.type    = 'checkbox';
+  input.checked = checked;
+  input.addEventListener('change', async () => {
+    if (busy) { input.checked = !input.checked; return; }
+    busy = true;
+    input.disabled = true;
+    await onToggle(input.checked);
+    input.disabled = false;
+    busy = false;
+  });
+  const slider = document.createElement('div');
+  slider.className = 'slider';
+  label.appendChild(input);
+  label.appendChild(slider);
+  return label;
+}
+
+function buildRow({ label, desc, checked, typeBadge, statusBadge, serviceName, onToggle }) {
+  const row = document.createElement('div');
+  row.className = 'toggle-row';
+
+  const left = document.createElement('div');
+  left.className = 'row-left';
+
+  const text = document.createElement('div');
+  text.className = 'row-text';
+  const lbl = document.createElement('span');
+  lbl.className   = 'row-label';
+  lbl.textContent = label;
+  const dsc = document.createElement('span');
+  dsc.className   = 'row-desc';
+  dsc.textContent = desc;
+  text.appendChild(lbl);
+  text.appendChild(dsc);
+  left.appendChild(text);
+
+  const right = document.createElement('div');
+  right.className = 'row-right';
+
+  if (serviceName) {
+    const b = document.createElement('span');
+    b.className   = 'service-tag';
+    b.textContent = serviceName;
+    right.appendChild(b);
+  }
+
+  if (typeBadge) {
+    const b = document.createElement('span');
+    b.className   = `type-badge type-${typeBadge}`;
+    b.textContent = typeBadge;
+    right.appendChild(b);
+  }
+
+  if (statusBadge) {
+    const b = document.createElement('span');
+    b.className   = `status-badge status-${statusBadge}`;
+    b.textContent = statusBadge;
+    right.appendChild(b);
+  }
+
+  right.appendChild(buildSwitch(checked, onToggle));
+  row.appendChild(left);
+  row.appendChild(right);
+  return row;
+}
+
+// ── API helpers ────────────────────────────────────────────────────────────
+async function post(url, body) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return r.json();
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+async function loadState() {
+  const data = await fetch('/api/state').then(r => r.json());
+
+  // Generator status
+  const st = data.generator_status;
+  document.getElementById('gen-dot').className   = `dot ${st === 'running' ? 'running' : 'stopped'}`;
+  document.getElementById('gen-label').textContent = `Generator: ${st}`;
+
+  // Scenarios — grouped by type in order: logs → metrics → traces
+  const scBody = document.getElementById('scenarios-body');
+  scBody.innerHTML = '';
+
+  const TYPE_ORDER = ['logs', 'metrics', 'traces'];
+  const TYPE_ICON  = { logs: '📄', metrics: '📊', traces: '🔍' };
+  const TYPE_LABEL = { logs: 'Logs', metrics: 'Métricas', traces: 'Traces' };
+
+  const grouped = {};
+  for (const sc of data.scenarios) {
+    const t = sc.type || 'logs';
+    if (!grouped[t]) grouped[t] = [];
+    grouped[t].push(sc);
+  }
+
+  for (const type of TYPE_ORDER) {
+    const items = grouped[type];
+    if (!items || items.length === 0) continue;
+
+    // Group header
+    const header = document.createElement('div');
+    header.className = 'group-header';
+    header.innerHTML = `<span>${TYPE_ICON[type] || ''} &nbsp;${TYPE_LABEL[type] || type}</span>`;
+    scBody.appendChild(header);
+
+    for (const sc of items) {
+      scBody.appendChild(buildRow({
+        label:       formatScenarioName(sc.file),
+        desc:        sc.description || sc.file,
+        checked:     sc.enabled,
+        serviceName: type === 'logs' ? sc.service_name : null,
+        onToggle: async (v) => {
+          const res = await post('/api/toggle/scenario', { name: sc.file, value: v });
+          toast(res.ok
+            ? `${formatScenarioName(sc.file)} ${v ? 'ativado' : 'desativado'}`
+            : (res.error || 'erro'), res.ok);
+          setTimeout(loadState, 1500);
+        },
+      }));
+    }
+  }
+
+  // Backends
+  const bkBody = document.getElementById('backends-body');
+  bkBody.innerHTML = '';
+  for (const [key, val] of Object.entries(data.backends)) {
+    const m  = BACKEND_META[key] || { label: key, desc: '' };
+    const st = val.container_status;
+    bkBody.appendChild(buildRow({
+      label: m.label, desc: m.desc, checked: val.enabled,
+      statusBadge: st,
+      onToggle: async (v) => {
+        const res = await post('/api/toggle/env', { key, value: v });
+        toast(res.ok
+          ? `${m.label} ${v ? 'iniciado' : 'parado'}`
+          : (res.error || 'erro'), res.ok);
+        setTimeout(loadState, 2000);
+      },
+    }));
+  }
+}
+
+function formatScenarioName(file) {
+  return file.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+loadState();
+setInterval(loadState, 10000);
+</script>
+</body>
+</html>

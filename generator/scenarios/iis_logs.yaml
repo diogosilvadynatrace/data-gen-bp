@@ -1,0 +1,37 @@
+name: iis_logs
+description: "IIS (Internet Information Services) W3C access logs with PII — masking demo"
+type: logs
+rate: 4
+service:
+  name: iis-webserver
+  version: "10.0"
+  namespace: infrastructure
+
+templates:
+  - weight: 40
+    severity: INFO
+    body: "{ip_public} - {email} [{uuid}] \"{method} {path} HTTP/1.1\" {status} {latency_ms} \"{url}\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\""
+
+  - weight: 20
+    severity: INFO
+    body: "{ip_public} - {email} [{uuid}] \"GET /Default.aspx HTTP/1.1\" 200 {latency_ms} \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64)\""
+
+  - weight: 15
+    severity: WARN
+    body: "{ip_public} - {email} [{uuid}] \"{method} {path} HTTP/1.1\" 401 {latency_ms} \"-\" \"-\" — Authentication failure for user={email} from={ip_public}"
+
+  - weight: 10
+    severity: WARN
+    body: "{ip_public} - - [{uuid}] \"{method} {path} HTTP/1.1\" 403 {latency_ms} \"-\" \"-\" — Access denied: resource restricted, client={ip_public}"
+
+  - weight: 8
+    severity: ERROR
+    body: "{ip_public} - {email} [{uuid}] \"POST /api/upload HTTP/1.1\" 500 {latency_ms} \"-\" \"-\" — ASP.NET runtime error: {error} user={email}"
+
+  - weight: 5
+    severity: ERROR
+    body: "{ip_public} - {email} [{uuid}] \"{method} {path} HTTP/1.1\" 503 {latency_ms} \"-\" \"-\" — Application pool recycled, last user={email} phone={phone}"
+
+  - weight: 2
+    severity: DEBUG
+    body: "W3SVC worker process trace: pid={uuid} client={ip_public} user={email} elapsed={latency_ms}ms route={path}"

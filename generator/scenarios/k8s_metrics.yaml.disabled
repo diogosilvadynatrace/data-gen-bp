@@ -1,0 +1,71 @@
+name: k8s_metrics
+description: "Kubernetes container metrics with high-cardinality pod labels — cost reduction demo"
+type: metrics
+export_interval: 10
+service:
+  name: k8s-metrics-collector
+  namespace: monitoring
+
+metrics:
+  - name: container_cpu_usage_seconds_total
+    type: counter
+    unit: "s"
+    description: "Cumulative CPU time consumed by containers"
+    value:
+      min: 0.001
+      max: 0.5
+    labels:
+      container: ["nginx", "redis", "postgres", "api-server", "auth-service", "worker"]
+      pod: random_pod          # HIGH CARDINALITY — 20 unique random pod names
+      namespace: ["default", "prod", "staging", "kube-system"]
+      node: ["node-1", "node-2", "node-3", "node-4", "node-5"]
+
+  - name: container_memory_working_set_bytes
+    type: gauge
+    unit: "By"
+    description: "Current working-set memory of containers"
+    value:
+      min: 52428800     # 50 MB
+      max: 1073741824   # 1 GB
+    labels:
+      container: ["nginx", "redis", "postgres", "api-server", "auth-service"]
+      pod: random_pod          # HIGH CARDINALITY
+      namespace: ["default", "prod", "staging"]
+      node: ["node-1", "node-2", "node-3"]
+
+  - name: http_requests_total
+    type: counter
+    unit: "1"
+    description: "Total HTTP requests handled"
+    value:
+      min: 1
+      max: 150
+    labels:
+      method: ["GET", "POST", "PUT", "DELETE"]
+      status_code: ["200", "201", "400", "401", "404", "500"]
+      service: ["api-gateway", "auth-service", "user-service", "order-service"]
+      pod: random_pod          # HIGH CARDINALITY
+
+  - name: http_request_duration_milliseconds
+    type: histogram
+    unit: "ms"
+    description: "HTTP request latency"
+    value:
+      min: 5
+      max: 3000
+    labels:
+      method: ["GET", "POST"]
+      route: ["/api/users", "/api/orders", "/api/products", "/api/auth"]
+      service: ["api-gateway", "user-service", "order-service"]
+
+  - name: container_network_transmit_bytes_total
+    type: counter
+    unit: "By"
+    description: "Cumulative bytes transmitted over the network"
+    value:
+      min: 512
+      max: 524288
+    labels:
+      interface: ["eth0", "lo"]
+      pod: random_pod          # HIGH CARDINALITY
+      node: ["node-1", "node-2", "node-3", "node-4", "node-5"]

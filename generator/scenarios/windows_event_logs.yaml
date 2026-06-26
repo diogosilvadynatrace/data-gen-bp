@@ -1,0 +1,53 @@
+name: windows_event_logs
+description: "Windows Event Log entries (Security, System, Application) with PII — masking demo"
+type: logs
+rate: 2
+service:
+  name: windows-event-collector
+  version: "1.0.0"
+  namespace: infrastructure
+
+templates:
+  # Security — logon/logoff
+  - weight: 25
+    severity: INFO
+    body: "EventID=4624 An account was successfully logged on. Subject: Account Name={name} Account Domain=CORP Logon Type=3 Network Address={ip_public} Workstation Name={pod}"
+
+  - weight: 15
+    severity: WARN
+    body: "EventID=4625 An account failed to log on. Account Name={email} Failure Reason=Unknown user name or bad password Source Network Address={ip_public} Logon Type=3"
+
+  - weight: 10
+    severity: INFO
+    body: "EventID=4634 An account was logged off. Account Name={name} Account Domain=CORP Logon Type=3 Session Duration={latency_ms}s"
+
+  # Security — account management
+  - weight: 8
+    severity: WARN
+    body: "EventID=4720 A user account was created. New Account: Account Name={name} Account Domain=CORP Creator Account={email} Creator IP={ip_public}"
+
+  - weight: 5
+    severity: ERROR
+    body: "EventID=4740 A user account was locked out. Account Name={email} Caller Computer Name={pod} Source Network Address={ip_public}"
+
+  # System — service events
+  - weight: 12
+    severity: INFO
+    body: "EventID=7036 Source=Service Control Manager The {error} service entered the running state. Computer={pod}"
+
+  - weight: 8
+    severity: ERROR
+    body: "EventID=7034 Source=Service Control Manager The {error} service terminated unexpectedly. It has done this 3 time(s). Computer={pod} User={name}"
+
+  # Application — general errors
+  - weight: 10
+    severity: ERROR
+    body: "EventID=1000 Source=Application Error Faulting application name=w3wp.exe, version=10.0, Faulting module={error} Exception code=0xc0000005 User={email} Computer={pod}"
+
+  - weight: 5
+    severity: WARN
+    body: "EventID=1001 Source=Windows Error Reporting Fault bucket, type=0 Event Name=APPCRASH Response=Not available Cab Id=0 User={email} IP={ip_public}"
+
+  - weight: 2
+    severity: INFO
+    body: "EventID=4688 A new process has been created. Creator Subject: Account Name={name} Account Domain=CORP New Process Name=C:\\Windows\\System32\\cmd.exe Token Elevation Type=TokenElevationTypeFull"

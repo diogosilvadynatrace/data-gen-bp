@@ -89,6 +89,8 @@ start: setup ## Inicia com BindPlane Agent — pipeline gerenciado pela UI do Bi
 	@echo "  Configure mascaramento e filtros diretamente na UI do BindPlane."
 	@echo "  O agente '$(shell grep BINDPLANE_AGENT_NAME .env | cut -d= -f2)' deve aparecer em: Agents"
 	@echo ""
+	@echo "  $(CYAN)Manager UI$(RESET)     →  http://localhost:8080"
+	@echo ""
 
 # ── Modo standalone (sem BindPlane) ──────────────────────────────────────────
 
@@ -146,6 +148,9 @@ logs: ## Acompanha logs do gerador de dados
 
 logs-agent: ## Acompanha logs do BindPlane Agent (modo bindplane)
 	docker compose --profile bindplane logs -f bindplane-agent
+
+logs-manager: ## Acompanha logs do Manager UI
+	docker compose logs -f manager
 
 logs-collector: ## Acompanha logs do OTel Collector (modo standalone)
 	docker compose --profile standalone logs -f otelcol

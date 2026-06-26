@@ -1,0 +1,62 @@
+name: checkout_traces
+description: "E-commerce checkout flow — distributed traces with PII in span attributes"
+type: traces
+rate: 1
+service:
+  name: checkout-service
+  version: "3.1.0"
+  namespace: ecommerce
+
+spans:
+  - name: checkout
+    duration_ms: [200, 2000]
+    error_rate: 0.05
+    attributes:
+      user.email: "{email}"
+      order.id: "{uuid}"
+      order.total: "{amount}"
+      customer.name: "{name}"
+      customer.ip: "{ip_public}"
+    children:
+
+      - name: validate_cart
+        duration_ms: [10, 60]
+        error_rate: 0.01
+        attributes:
+          cart.item_count: "3"
+          db.system: "redis"
+
+      - name: process_payment
+        duration_ms: [100, 900]
+        error_rate: 0.08
+        attributes:
+          payment.method: "credit_card"
+          payment.card_number: "{credit_card}"
+          payment.amount: "{amount}"
+          payment.currency: "USD"
+        children:
+          - name: payment_gateway_call
+            duration_ms: [80, 700]
+            error_rate: 0.06
+            attributes:
+              gateway: "stripe"
+              gateway.request_id: "{uuid}"
+              net.peer.name: "api.stripe.com"
+              http.method: "POST"
+              http.url: "https://api.stripe.com/v1/charges"
+
+      - name: update_inventory
+        duration_ms: [15, 80]
+        error_rate: 0.01
+        attributes:
+          db.system: "postgresql"
+          db.name: "inventory"
+          db.operation: "UPDATE"
+
+      - name: send_confirmation_email
+        duration_ms: [40, 300]
+        error_rate: 0.02
+        attributes:
+          notification.channel: "email"
+          notification.recipient: "{email}"
+          messaging.system: "sendgrid"
