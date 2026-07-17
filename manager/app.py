@@ -2,6 +2,7 @@ from flask import Flask, render_template, jsonify, request
 import os
 import re
 import glob
+import subprocess
 import yaml
 import docker
 
@@ -11,6 +12,8 @@ ENV_FILE      = os.getenv('ENV_FILE',      '/config/.env')
 SCENARIOS_DIR = os.getenv('SCENARIOS_DIR', '/scenarios')
 GENERATOR_CTR = os.getenv('GENERATOR_CONTAINER', 'data-gen-generator-1')
 COMPOSE_PRJ   = os.getenv('COMPOSE_PROJECT',     'data-gen')
+COMPOSE_FILE  = os.getenv('COMPOSE_FILE',        '/compose/docker-compose.yml')
+PROJECT_DIR   = os.getenv('PROJECT_DIR',         '')
 
 BACKEND_SERVICES = {
     'ENABLE_PROMETHEUS': 'prometheus',
@@ -104,6 +107,27 @@ def restart_generator() -> dict:
         return {'ok': False, 'error': str(e)}
 
 
+def _compose_up(service: str) -> dict:
+    cmd = ['docker', 'compose',
+           '-f', COMPOSE_FILE,
+           '--env-file', ENV_FILE,
+           '--project-name', COMPOSE_PRJ,
+           '--profile', service,
+           'up', '-d', service]
+    if PROJECT_DIR:
+        cmd = ['docker', 'compose',
+               '--project-directory', PROJECT_DIR,
+               '-f', COMPOSE_FILE,
+               '--env-file', ENV_FILE,
+               '--project-name', COMPOSE_PRJ,
+               '--profile', service,
+               'up', '-d', service]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode == 0:
+        return {'ok': True}
+    return {'ok': False, 'error': r.stderr.strip() or r.stdout.strip()}
+
+
 def toggle_backend(service: str, enable: bool) -> dict:
     name = f'{COMPOSE_PRJ}-{service}-1'
     try:
@@ -115,7 +139,7 @@ def toggle_backend(service: str, enable: bool) -> dict:
         return {'ok': True}
     except docker.errors.NotFound:
         if enable:
-            return {'ok': False, 'error': f'Container {name} não encontrado. Execute make start com {service} habilitado.'}
+            return _compose_up(service)
         return {'ok': True}
     except Exception as e:
         return {'ok': False, 'error': str(e)}

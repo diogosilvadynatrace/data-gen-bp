@@ -30,12 +30,15 @@ services:
     volumes:
       - ./.env:/config/.env
       - ./generator/scenarios:/scenarios
+      - ./docker-compose.yml:/compose/docker-compose.yml:ro
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
       ENV_FILE: /config/.env
       SCENARIOS_DIR: /scenarios
       GENERATOR_CONTAINER: data-gen-generator-1
       COMPOSE_PROJECT: data-gen
+      COMPOSE_FILE: /compose/docker-compose.yml
+      PROJECT_DIR: ${PWD}
     restart: unless-stopped
 
   # ── BindPlane Agent ─────────────────────────────────────────────────────────
