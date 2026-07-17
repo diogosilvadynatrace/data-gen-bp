@@ -254,6 +254,8 @@ const BACKEND_META = {
   ENABLE_LOKI:       { label: 'Loki',       desc: 'Armazenamento de logs — porta 3100' },
   ENABLE_TEMPO:      { label: 'Tempo',      desc: 'Armazenamento de traces — porta 3200' },
   ENABLE_GRAFANA:    { label: 'Grafana',    desc: 'Dashboards — porta 3000' },
+  ENABLE_SELFMON:    { label: 'Self-monitoring', desc: 'Métricas internas do pipeline → Dynatrace (requer DT_API_TOKEN)' },
+  ENABLE_MONGODB:    { label: 'MongoDB',         desc: 'Instância real para POC — porta 27017 (admin / demo1234)' },
 };
 
 let busy = false;

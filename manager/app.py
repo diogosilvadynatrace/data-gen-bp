@@ -17,6 +17,8 @@ BACKEND_SERVICES = {
     'ENABLE_LOKI':       'loki',
     'ENABLE_TEMPO':      'tempo',
     'ENABLE_GRAFANA':    'grafana',
+    'ENABLE_SELFMON':    'selfmon',
+    'ENABLE_MONGODB':    'mongodb',
 }
 SIGNAL_KEYS  = {'ENABLE_LOGS', 'ENABLE_METRICS', 'ENABLE_TRACES'}
 BACKEND_KEYS = set(BACKEND_SERVICES.keys())

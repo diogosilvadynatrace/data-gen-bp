@@ -17,9 +17,11 @@ _MON_PROFILES := $(shell \
   grep -qs '^ENABLE_LOKI=true'       .env 2>/dev/null && p="$$p --profile loki"; \
   grep -qs '^ENABLE_TEMPO=true'      .env 2>/dev/null && p="$$p --profile tempo"; \
   grep -qs '^ENABLE_GRAFANA=true'    .env 2>/dev/null && p="$$p --profile grafana"; \
+  grep -qs '^ENABLE_SELFMON=true'    .env 2>/dev/null && p="$$p --profile selfmon"; \
+  grep -qs '^ENABLE_MONGODB=true'    .env 2>/dev/null && p="$$p --profile mongodb"; \
   printf '%s' "$$p" \
 )
-_ALL_MON := --profile prometheus --profile loki --profile tempo --profile grafana
+_ALL_MON := --profile prometheus --profile loki --profile tempo --profile grafana --profile selfmon --profile mongodb
 
 # ────────────────────────────────────────────────────────────────────────────
 

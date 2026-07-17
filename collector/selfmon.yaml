@@ -1,0 +1,23 @@
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: bindplane-agent
+          scrape_interval: 30s
+          static_configs:
+            - targets: [bindplane-agent:8888]
+
+exporters:
+  otlphttp:
+    endpoint: ${env:DT_OTLP_ENDPOINT}
+    headers:
+      Authorization: "Api-Token ${env:DT_API_TOKEN}"
+
+service:
+  telemetry:
+    logs:
+      level: warn
+  pipelines:
+    metrics:
+      receivers: [prometheus]
+      exporters: [otlphttp]

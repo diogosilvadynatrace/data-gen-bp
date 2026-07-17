@@ -79,6 +79,22 @@ services:
       - "8889:8889"
     restart: unless-stopped
 
+  # ── Self-monitoring (métricas internas do BindPlane Agent) ──────────────────
+  # Raspa /metrics do BindPlane Agent (porta 8888) e envia diretamente para o
+  # Dynatrace via OTLP HTTP. Requer DT_OTLP_ENDPOINT e DT_API_TOKEN no .env.
+  #
+  # Ativar: ENABLE_SELFMON=true  (perfil "selfmon")
+  selfmon:
+    image: otel/opentelemetry-collector-contrib:0.103.0
+    profiles: [selfmon]
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./collector/selfmon.yaml:/etc/otelcol/config.yaml:ro
+    environment:
+      DT_OTLP_ENDPOINT: ${DT_OTLP_ENDPOINT:-}
+      DT_API_TOKEN: ${DT_API_TOKEN:-}
+    restart: unless-stopped
+
   # ── Backends de visualização ────────────────────────────────────────────────
   # Disponíveis em ambos os modos.
   # No modo BindPlane, configure os destinos diretamente pela UI do BindPlane.
@@ -126,5 +142,22 @@ services:
       - "3000:3000"
     volumes:
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    restart: unless-stopped
+
+  # ── MongoDB ──────────────────────────────────────────────────────────────────
+  # Instância real para POCs com BindPlane MongoDB receiver.
+  # Configure o receiver no BindPlane UI usando:
+  #   host: mongodb:27017  (dentro da rede Docker)
+  #   user: ${MONGO_USERNAME} / password: ${MONGO_PASSWORD}
+  #
+  # Ativar: ENABLE_MONGODB=true  (perfil "mongodb")
+  mongodb:
+    image: mongo:7
+    profiles: [mongodb]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-demo1234}
+    ports:
+      - "27017:27017"
     restart: unless-stopped
 
