@@ -26,6 +26,13 @@ BACKEND_SERVICES = {
 SIGNAL_KEYS  = {'ENABLE_LOGS', 'ENABLE_METRICS', 'ENABLE_TRACES'}
 BACKEND_KEYS = set(BACKEND_SERVICES.keys())
 
+WORKLOAD_SERVICES = {
+    'MONGO_WORKLOAD_SLOW_QUERIES':  'mongo-workload',
+    'MONGO_WORKLOAD_COMMANDS':      'mongo-workload',
+    'MONGO_WORKLOAD_AUTH_FAILURES': 'mongo-workload',
+}
+WORKLOAD_KEYS = set(WORKLOAD_SERVICES.keys())
+
 
 # ── .env helpers ──────────────────────────────────────────────────────────────
 
@@ -183,6 +190,7 @@ def state():
             k: {'enabled': benv(k, 'false'), 'container_status': container_status(svc)}
             for k, svc in BACKEND_SERVICES.items()
         },
+        'workloads': {k: {'enabled': benv(k, 'false')} for k in WORKLOAD_KEYS},
         'scenarios': get_scenarios(),
     })
 
@@ -193,7 +201,7 @@ def toggle_env():
     key   = data.get('key', '')
     value = 'true' if data.get('value') else 'false'
 
-    if key not in (SIGNAL_KEYS | BACKEND_KEYS):
+    if key not in (SIGNAL_KEYS | BACKEND_KEYS | WORKLOAD_KEYS):
         return jsonify({'ok': False, 'error': 'chave inválida'}), 400
 
     write_env_var(key, value)
@@ -201,6 +209,17 @@ def toggle_env():
     if key in SIGNAL_KEYS:
         result = restart_generator()
         return jsonify({**result, 'restarted': result['ok']})
+
+    if key in WORKLOAD_KEYS:
+        svc  = WORKLOAD_SERVICES[key]
+        name = f'{COMPOSE_PRJ}-{svc}-1'
+        try:
+            _docker().containers.get(name).restart(timeout=5)
+            return jsonify({'ok': True, 'restarted': True})
+        except docker.errors.NotFound:
+            return jsonify({'ok': True, 'restarted': False})
+        except Exception as e:
+            return jsonify({'ok': False, 'error': str(e)})
 
     svc    = BACKEND_SERVICES[key]
     result = toggle_backend(svc, value == 'true')

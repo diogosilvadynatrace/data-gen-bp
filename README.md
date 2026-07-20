@@ -361,6 +361,35 @@ make logs-collector      # Logs do OTel Collector (modo standalone)
 make status              # Status de todos os serviços
 ```
 
+### MongoDB
+
+```bash
+# Subir MongoDB + workload
+docker compose --profile mongodb up -d --build
+
+# Ver path do arquivo de log (para configurar File Log source no BindPlane)
+docker inspect data-gen-mongodb-1 --format '{{.LogPath}}'
+
+# Acompanhar logs em tempo real
+docker logs -f data-gen-mongodb-1
+
+# Acompanhar workload (operações geradas)
+docker logs -f data-gen-mongo-workload-1
+
+# Ativar workloads — edite .env e reinicie o workload:
+#   MONGO_WORKLOAD_SLOW_QUERIES=true    → componente QUERY
+#   MONGO_WORKLOAD_COMMANDS=true        → componente COMMAND
+#   MONGO_WORKLOAD_AUTH_FAILURES=true   → componente ACCESS
+docker compose --profile mongodb up -d mongo-workload
+
+# Conectar via mongosh
+mongosh "mongodb://admin:demo1234@localhost:27017"
+
+# Verificar verbosity atual
+mongosh "mongodb://admin:demo1234@localhost:27017" --eval \
+  "db.adminCommand({getParameter: 1, logLevel: 1})" --quiet
+```
+
 ---
 
 ## URLs locais

@@ -122,6 +122,14 @@
     .toggle-row:last-child { border-bottom: none; }
     .toggle-row:hover { background: var(--surface2); }
 
+    .toggle-row.sub-row {
+      padding-left: 44px;
+      background: rgba(255,255,255,0.015);
+      border-left: 2px solid var(--border);
+    }
+    .toggle-row.sub-row .row-label { font-size: 12px; color: var(--muted); }
+    .toggle-row.sub-row .row-desc  { font-size: 10px; }
+
     .row-left { display: flex; align-items: center; gap: 10px; }
 
     .row-text { display: flex; flex-direction: column; gap: 2px; }
@@ -256,6 +264,12 @@ const BACKEND_META = {
   ENABLE_GRAFANA:    { label: 'Grafana',    desc: 'Dashboards — porta 3000' },
   ENABLE_SELFMON:    { label: 'Self-monitoring', desc: 'Métricas internas do pipeline → Dynatrace (requer DT_API_TOKEN)' },
   ENABLE_MONGODB:    { label: 'MongoDB',         desc: 'Instância real para POC — porta 27017 (admin / demo1234)' },
+};
+
+const WORKLOAD_META = {
+  MONGO_WORKLOAD_SLOW_QUERIES:  { label: 'Slow Queries',   desc: 'QUERY — full scans, threshold=0ms',          parent: 'ENABLE_MONGODB' },
+  MONGO_WORKLOAD_COMMANDS:      { label: 'Commands',       desc: 'COMMAND — CRUD com verbosity=1',             parent: 'ENABLE_MONGODB' },
+  MONGO_WORKLOAD_AUTH_FAILURES: { label: 'Auth Failures',  desc: 'ACCESS — tentativas com senha errada',       parent: 'ENABLE_MONGODB' },
 };
 
 let busy = false;
@@ -418,6 +432,24 @@ async function loadState() {
         setTimeout(loadState, 2000);
       },
     }));
+
+    // Sub-items: workloads que pertencem a este backend
+    const children = Object.entries(WORKLOAD_META).filter(([, wm]) => wm.parent === key);
+    for (const [wkey, wm] of children) {
+      const wval = (data.workloads || {})[wkey] || {};
+      const row = buildRow({
+        label: wm.label, desc: wm.desc, checked: !!wval.enabled,
+        onToggle: async (v) => {
+          const res = await post('/api/toggle/env', { key: wkey, value: v });
+          toast(res.ok
+            ? `${wm.label} ${v ? 'ativado' : 'desativado'}`
+            : (res.error || 'erro'), res.ok);
+          setTimeout(loadState, 1500);
+        },
+      });
+      row.classList.add('sub-row');
+      bkBody.appendChild(row);
+    }
   }
 }
 
