@@ -63,6 +63,7 @@ services:
     volumes:
       - ./bindplane-agent-data:/etc/otel   # persiste manager.yaml (agent_id) + config.yaml
       - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
     restart: unless-stopped
 
   # ── OTel Collector standalone ───────────────────────────────────────────────
