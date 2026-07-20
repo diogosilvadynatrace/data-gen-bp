@@ -60,6 +60,7 @@ services:
       - "4317:4317"    # OTLP gRPC
       - "4318:4318"    # OTLP HTTP
       - "13133:13133"  # health check
+    user: root
     volumes:
       - ./bindplane-agent-data:/etc/otel   # persiste manager.yaml (agent_id) + config.yaml
       - /var/run/docker.sock:/var/run/docker.sock
