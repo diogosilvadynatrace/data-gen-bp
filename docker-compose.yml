@@ -171,3 +171,23 @@ services:
       - "27017:27017"
     restart: unless-stopped
 
+  # ── MongoDB Workload ─────────────────────────────────────────────────────────
+  # Gera operações reais no MongoDB para produzir logs por componente.
+  # Flags no .env controlam quais tipos de log são gerados:
+  #   MONGO_WORKLOAD_SLOW_QUERIES → componente QUERY (full scans, threshold=0ms)
+  #   MONGO_WORKLOAD_COMMANDS     → componente COMMAND (CRUD verbosity=1)
+  #   MONGO_WORKLOAD_AUTH_FAILURES→ componente ACCESS (tentativas com senha errada)
+  mongo-workload:
+    build:
+      context: ./mongo-workload
+      dockerfile: Dockerfile
+    profiles: [mongodb]
+    environment:
+      MONGO_URI: mongodb://${MONGO_USERNAME:-admin}:${MONGO_PASSWORD:-demo1234}@mongodb:27017
+      MONGO_WORKLOAD_SLOW_QUERIES:   ${MONGO_WORKLOAD_SLOW_QUERIES:-false}
+      MONGO_WORKLOAD_COMMANDS:       ${MONGO_WORKLOAD_COMMANDS:-false}
+      MONGO_WORKLOAD_AUTH_FAILURES:  ${MONGO_WORKLOAD_AUTH_FAILURES:-false}
+    depends_on:
+      - mongodb
+    restart: unless-stopped
+
