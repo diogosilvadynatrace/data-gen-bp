@@ -61,6 +61,10 @@ services:
       - "4318:4318"    # OTLP HTTP
       - "13133:13133"  # health check
     user: root
+    cap_drop:
+      - ALL
+    cap_add:
+      - DAC_READ_SEARCH
     volumes:
       - ./bindplane-agent-data:/etc/otel   # persiste manager.yaml (agent_id) + config.yaml
       - /var/run/docker.sock:/var/run/docker.sock

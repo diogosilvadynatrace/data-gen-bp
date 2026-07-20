@@ -375,6 +375,46 @@ make status              # Status de todos os serviços
 
 ---
 
+## Coleta de logs de containers Docker
+
+O BindPlane Agent coleta logs de outros containers (ex: MongoDB) via **File Log source**, lendo os arquivos JSON que o Docker cria em:
+
+```
+/var/lib/docker/containers/<container-id>/<container-id>-json.log
+```
+
+Para obter o path do container desejado:
+
+```bash
+docker inspect <container-name> --format '{{.LogPath}}'
+```
+
+### Por que `user: root` + `cap_drop: ALL` + `cap_add: DAC_READ_SEARCH`
+
+Os arquivos de log do Docker são de propriedade do `root` com permissão `640`. A imagem do BindPlane Agent roda por padrão como `uid=10005(otel)` — um usuário não-root.
+
+No Linux, capabilities adicionadas via `cap_add` só se tornam **efetivas** quando o processo inicia como root. Para um processo não-root, ficam no bounding set mas nunca são ativadas. Por isso a combinação correta é:
+
+```yaml
+# docker-compose.yml — BindPlane Agent
+user: root        # necessário para as capabilities serem efetivas
+cap_drop:
+  - ALL           # descarta TODAS as capabilities de root
+cap_add:
+  - DAC_READ_SEARCH  # restitui apenas: ler arquivos sem checar ownership
+```
+
+| Abordagem | Acesso concedido | Recomendado |
+|---|---|---|
+| `user: root` sozinho | Todos os ~40 privilégios de root | ❌ Excessivo |
+| `privileged: true` | Acesso total ao kernel | ❌ Nunca usar |
+| `cap_add` sem `user: root` | Capability no bounding set, **nunca efetiva** para não-root | ❌ Não funciona |
+| `user: root` + `cap_drop: ALL` + `cap_add: DAC_READ_SEARCH` | Somente leitura de arquivos sem checar ownership | ✅ Mínimo necessário |
+
+Esse padrão se aplica a qualquer coletor de logs em Docker (Fluent Bit, Vector, OTel Collector) que precise ler arquivos de log de outros containers no mesmo host.
+
+---
+
 ## Troubleshooting
 
 | Sintoma | Causa | Solução |
@@ -387,6 +427,7 @@ make status              # Status de todos os serviços
 | Loki: `unsupported protocol scheme` | Endpoint sem `http://` | Adicionar `http://`: usar `http://loki:3100/otlp` |
 | Prometheus: `bind: cannot assign requested address` | Usando tipo "Prometheus" em vez de "Prometheus Remote Write" | Trocar o tipo do destination no BindPlane UI |
 | Tempo: falha de conexão gRPC | Endpoint com `http://` para gRPC | Remover o prefixo: usar `tempo:4317` sem scheme |
+| File Log não coleta logs de containers | Agente sem permissão para ler `/var/lib/docker/containers` | Confirmar `cap_add: [DAC_READ_SEARCH]` no agente e volume montado |
 
 ---
 
