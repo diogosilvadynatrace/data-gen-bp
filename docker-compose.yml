@@ -69,6 +69,7 @@ services:
       - ./bindplane-agent-data:/etc/otel   # persiste manager.yaml (agent_id) + config.yaml
       - /var/run/docker.sock:/var/run/docker.sock
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - mongodb-logs:/var/log/mongodb:ro
     restart: unless-stopped
 
   # ── OTel Collector standalone ───────────────────────────────────────────────
@@ -164,11 +165,14 @@ services:
   mongodb:
     image: mongo:7
     profiles: [mongodb]
+    command: ["--logpath", "/var/log/mongodb/mongod.log", "--logappend"]
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME:-admin}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-demo1234}
     ports:
       - "27017:27017"
+    volumes:
+      - mongodb-logs:/var/log/mongodb
     restart: unless-stopped
 
   # ── MongoDB Workload ─────────────────────────────────────────────────────────
@@ -190,4 +194,7 @@ services:
     depends_on:
       - mongodb
     restart: unless-stopped
+
+volumes:
+  mongodb-logs:
 
