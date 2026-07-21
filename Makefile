@@ -50,6 +50,8 @@ setup: ## Cria .env a partir de .env.example (executar uma vez)
 # ── Modo BindPlane (principal) ────────────────────────────────────────────────
 
 start: setup ## Inicia com BindPlane Agent — pipeline gerenciado pela UI do BindPlane
+	@echo "$(YELLOW)→ Limpando build cache do Docker...$(RESET)"
+	@docker builder prune -f --keep-storage 1GB > /dev/null 2>&1 || true
 	@mkdir -p bindplane-agent-data
 	@# Na primeira execução (ou após make clean), extrai o config.yaml padrão da imagem
 	@if [ ! -f bindplane-agent-data/config.yaml ]; then \
