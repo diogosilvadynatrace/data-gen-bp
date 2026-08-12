@@ -22,6 +22,7 @@ BACKEND_SERVICES = {
     'ENABLE_GRAFANA':    'grafana',
     'ENABLE_SELFMON':    'selfmon',
     'ENABLE_MONGODB':    'mongodb',
+    'ENABLE_DATADOG':    'datadog',
 }
 SIGNAL_KEYS  = {'ENABLE_LOGS', 'ENABLE_METRICS', 'ENABLE_TRACES'}
 BACKEND_KEYS = set(BACKEND_SERVICES.keys())

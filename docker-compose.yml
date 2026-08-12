@@ -60,6 +60,7 @@ services:
       - "4317:4317"    # OTLP gRPC
       - "4318:4318"    # OTLP HTTP
       - "13133:13133"  # health check
+      - "8088:8088"    # Datadog receiver (configure a source no BindPlane UI)
     user: root
     cap_drop:
       - ALL
@@ -193,6 +194,39 @@ services:
       MONGO_WORKLOAD_AUTH_FAILURES:  ${MONGO_WORKLOAD_AUTH_FAILURES:-false}
     depends_on:
       - mongodb
+    restart: unless-stopped
+
+  # ── Datadog Agent ────────────────────────────────────────────────────────────
+  # Agente Datadog para validar integração com BindPlane (Datadog source/receiver).
+  #
+  # Modo cloud:    DD_DD_URL vazio → envia direto para Datadog (requer DD_API_KEY real)
+  # Modo BindPlane: DD_DD_URL=http://bindplane-agent:8088 → roteia via BindPlane
+  #   Configure no BindPlane UI: Datadog source na porta 8088
+  #
+  # Coleta automática: métricas de sistema, logs dos containers Docker, APM (porta 8126)
+  #
+  # Ativar: ENABLE_DATADOG=true  (perfil "datadog")
+  datadog:
+    image: datadog/agent:7
+    profiles: [datadog]
+    environment:
+      DD_API_KEY: ${DD_API_KEY:-}
+      DD_SITE: ${DD_SITE:-datadoghq.com}
+      DD_DD_URL: ${DD_DD_URL:-}
+      DD_LOGS_ENABLED: "true"
+      DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL: "true"
+      DD_LOGS_CONFIG_DOCKER_CONTAINER_USE_FILE: "true"
+      DD_APM_ENABLED: "true"
+      DD_APM_NON_LOCAL_TRAFFIC: "true"
+      DD_DOGSTATSD_NON_LOCAL_TRAFFIC: "true"
+      DD_HOSTNAME: data-gen-demo
+      DD_TAGS: "environment:demo,project:data-gen-demo"
+      DD_CONTAINER_LABELS_AS_TAGS: "com.docker.compose.service:service"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "8125:8125/udp"   # DogStatsD — métricas custom
+      - "8126:8126"       # APM — traces
     restart: unless-stopped
 
 volumes:
