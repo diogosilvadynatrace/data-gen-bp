@@ -49,7 +49,7 @@ services:
   # Pré-requisito: .env com BINDPLANE_SECRET_KEY preenchido.
   # Ativar: make start  (perfil "bindplane")
   bindplane-agent:
-    image: ghcr.io/observiq/bindplane-agent:latest
+    image: ghcr.io/observiq/bindplane-agent:1.106.0
     profiles: [bindplane]
     environment:
       OPAMP_ENDPOINT: ${BINDPLANE_ENDPOINT:-https://app.bindplane.com}
