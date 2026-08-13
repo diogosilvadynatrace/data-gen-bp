@@ -225,6 +225,56 @@
     #toast.show { transform: translateY(0); opacity: 1; }
     #toast.ok  { border-left: 3px solid var(--green); }
     #toast.err { border-left: 3px solid var(--red); }
+
+    /* ── Datadog config section ── */
+    .config-section { border-left: 2px solid var(--border); }
+
+    .config-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 20px 7px 44px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.015);
+    }
+    .config-row:last-child { border-bottom: none; }
+
+    .config-label {
+      font-size: 11px;
+      color: var(--muted);
+      min-width: 90px;
+      flex-shrink: 0;
+    }
+
+    .config-input {
+      flex: 1;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-size: 11px;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      padding: 4px 8px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .config-input:focus { border-color: var(--accent); }
+    .config-input::placeholder { color: var(--muted); opacity: 0.5; }
+
+    .btn-apply {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 5px 14px;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      white-space: nowrap;
+    }
+    .btn-apply:hover    { opacity: 0.85; }
+    .btn-apply:disabled { opacity: 0.4; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -266,6 +316,13 @@ const BACKEND_META = {
   ENABLE_MONGODB:    { label: 'MongoDB',         desc: 'Instância real para POC — porta 27017 (admin / demo1234)' },
   ENABLE_DATADOG:    { label: 'Datadog Agent',   desc: 'Métricas + logs + APM → valida integração com BindPlane (porta 8088)' },
 };
+
+const DATADOG_CONFIG_META = [
+  { key: 'DD_API_KEY',      label: 'API Key',     placeholder: 'qualquer valor (BindPlane não valida)', password: true  },
+  { key: 'DD_DD_URL',       label: 'Metrics URL', placeholder: 'http://bindplane-agent:8088'                           },
+  { key: 'DD_LOGS_DD_URL',  label: 'Logs URL',    placeholder: 'bindplane-agent:8088  (sem http://)'                   },
+  { key: 'DD_APM_DD_URL',   label: 'APM URL',     placeholder: 'http://bindplane-agent:8088'                           },
+];
 
 const WORKLOAD_META = {
   MONGO_WORKLOAD_SLOW_QUERIES:  { label: 'Slow Queries',   desc: 'QUERY — full scans, threshold=0ms',          parent: 'ENABLE_MONGODB' },
@@ -355,6 +412,57 @@ function buildRow({ label, desc, checked, typeBadge, statusBadge, serviceName, o
   return row;
 }
 
+// ── Datadog config panel ───────────────────────────────────────────────────
+function buildDatadogConfig(values) {
+  const wrap = document.createElement('div');
+  wrap.className = 'config-section';
+
+  DATADOG_CONFIG_META.forEach(({ key, label, placeholder, password }) => {
+    const row = document.createElement('div');
+    row.className = 'config-row';
+
+    const lbl = document.createElement('span');
+    lbl.className   = 'config-label';
+    lbl.textContent = label;
+
+    const inp = document.createElement('input');
+    inp.type        = password ? 'password' : 'text';
+    inp.className   = 'config-input';
+    inp.placeholder = placeholder;
+    inp.value       = values[key] || '';
+    inp.dataset.key = key;
+
+    row.appendChild(lbl);
+    row.appendChild(inp);
+    wrap.appendChild(row);
+  });
+
+  // Apply & Restart button row
+  const btnRow = document.createElement('div');
+  btnRow.className = 'config-row';
+  btnRow.style.justifyContent = 'flex-end';
+
+  const btn = document.createElement('button');
+  btn.className   = 'btn-apply';
+  btn.textContent = 'Apply & Restart';
+  btn.addEventListener('click', async () => {
+    const configs = {};
+    wrap.querySelectorAll('.config-input').forEach(i => { configs[i.dataset.key] = i.value.trim(); });
+    btn.disabled    = true;
+    btn.textContent = 'Salvando…';
+    const res = await post('/api/config', { configs, restart: true });
+    btn.textContent = 'Apply & Restart';
+    btn.disabled    = false;
+    toast(res.ok
+      ? 'Configuração salva' + (res.restarted ? ' · container reiniciado' : '')
+      : (res.error || 'erro'), res.ok);
+  });
+
+  btnRow.appendChild(btn);
+  wrap.appendChild(btnRow);
+  return wrap;
+}
+
 // ── API helpers ────────────────────────────────────────────────────────────
 async function post(url, body) {
   const r = await fetch(url, {
@@ -433,6 +541,11 @@ async function loadState() {
         setTimeout(loadState, 2000);
       },
     }));
+
+    // Datadog config panel
+    if (key === 'ENABLE_DATADOG') {
+      bkBody.appendChild(buildDatadogConfig(data.datadog_config || {}));
+    }
 
     // Sub-items: workloads que pertencem a este backend
     const children = Object.entries(WORKLOAD_META).filter(([, wm]) => wm.parent === key);

@@ -27,6 +27,8 @@ BACKEND_SERVICES = {
 SIGNAL_KEYS  = {'ENABLE_LOGS', 'ENABLE_METRICS', 'ENABLE_TRACES'}
 BACKEND_KEYS = set(BACKEND_SERVICES.keys())
 
+DATADOG_CONFIG_KEYS = {'DD_API_KEY', 'DD_DD_URL', 'DD_LOGS_DD_URL', 'DD_APM_DD_URL'}
+
 WORKLOAD_SERVICES = {
     'MONGO_WORKLOAD_SLOW_QUERIES':  'mongo-workload',
     'MONGO_WORKLOAD_COMMANDS':      'mongo-workload',
@@ -192,6 +194,7 @@ def state():
             for k, svc in BACKEND_SERVICES.items()
         },
         'workloads': {k: {'enabled': benv(k, 'false')} for k in WORKLOAD_KEYS},
+        'datadog_config': {k: env.get(k, '') for k in DATADOG_CONFIG_KEYS},
         'scenarios': get_scenarios(),
     })
 
@@ -248,6 +251,26 @@ def toggle_scenario():
         return jsonify({**result, 'restarted': result['ok']})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)})
+
+
+@app.route('/api/config', methods=['POST'])
+def set_config():
+    data    = request.get_json()
+    configs = data.get('configs', {})
+    for key, value in configs.items():
+        if key not in DATADOG_CONFIG_KEYS:
+            return jsonify({'ok': False, 'error': f'chave inválida: {key}'}), 400
+        write_env_var(key, value)
+    if data.get('restart'):
+        name = f'{COMPOSE_PRJ}-datadog-1'
+        try:
+            _docker().containers.get(name).restart(timeout=5)
+            return jsonify({'ok': True, 'restarted': True})
+        except docker.errors.NotFound:
+            return jsonify({'ok': True, 'restarted': False})
+        except Exception as e:
+            return jsonify({'ok': False, 'error': str(e)})
+    return jsonify({'ok': True, 'restarted': False})
 
 
 if __name__ == '__main__':
