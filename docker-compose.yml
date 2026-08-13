@@ -212,12 +212,16 @@ services:
     environment:
       DD_API_KEY: ${DD_API_KEY:-}
       DD_SITE: ${DD_SITE:-datadoghq.com}
-      DD_DD_URL: ${DD_DD_URL:-}
+      DD_DD_URL: ${DD_DD_URL:-}                              # métricas
       DD_LOGS_ENABLED: "true"
       DD_LOGS_CONFIG_CONTAINER_COLLECT_ALL: "true"
       DD_LOGS_CONFIG_DOCKER_CONTAINER_USE_FILE: "true"
+      DD_LOGS_CONFIG_LOGS_DD_URL: ${DD_LOGS_DD_URL:-}        # logs (host:porta, sem http://)
+      DD_LOGS_CONFIG_USE_HTTP: "true"
+      DD_LOGS_CONFIG_LOGS_NO_SSL: "true"
       DD_APM_ENABLED: "true"
       DD_APM_NON_LOCAL_TRAFFIC: "true"
+      DD_APM_DD_URL: ${DD_APM_DD_URL:-}                      # traces APM
       DD_DOGSTATSD_NON_LOCAL_TRAFFIC: "true"
       DD_HOSTNAME: data-gen-demo
       DD_TAGS: "environment:demo,project:data-gen-demo"
