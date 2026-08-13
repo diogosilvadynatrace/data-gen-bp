@@ -325,9 +325,10 @@ const DATADOG_CONFIG_META = [
 ];
 
 const WORKLOAD_META = {
-  MONGO_WORKLOAD_SLOW_QUERIES:  { label: 'Slow Queries',   desc: 'QUERY — full scans, threshold=0ms',          parent: 'ENABLE_MONGODB' },
-  MONGO_WORKLOAD_COMMANDS:      { label: 'Commands',       desc: 'COMMAND — CRUD com verbosity=1',             parent: 'ENABLE_MONGODB' },
-  MONGO_WORKLOAD_AUTH_FAILURES: { label: 'Auth Failures',  desc: 'ACCESS — tentativas com senha errada',       parent: 'ENABLE_MONGODB' },
+  MONGO_WORKLOAD_SLOW_QUERIES:  { label: 'Slow Queries',   desc: 'QUERY — full scans, threshold=0ms',                              parent: 'ENABLE_MONGODB' },
+  MONGO_WORKLOAD_COMMANDS:      { label: 'Commands',       desc: 'COMMAND — CRUD com verbosity=1',                                 parent: 'ENABLE_MONGODB' },
+  MONGO_WORKLOAD_AUTH_FAILURES: { label: 'Auth Failures',  desc: 'ACCESS — tentativas com senha errada',                           parent: 'ENABLE_MONGODB' },
+  DD_TRACES_APP:                { label: 'Trace Generator', desc: 'Simula checkout, orders, payment — spans de DB e cache',        parent: 'ENABLE_DATADOG'  },
 };
 
 let busy = false;

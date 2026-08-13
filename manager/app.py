@@ -33,6 +33,7 @@ WORKLOAD_SERVICES = {
     'MONGO_WORKLOAD_SLOW_QUERIES':  'mongo-workload',
     'MONGO_WORKLOAD_COMMANDS':      'mongo-workload',
     'MONGO_WORKLOAD_AUTH_FAILURES': 'mongo-workload',
+    'DD_TRACES_APP':                'dd-app',
 }
 WORKLOAD_KEYS = set(WORKLOAD_SERVICES.keys())
 
