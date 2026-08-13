@@ -242,14 +242,13 @@ services:
       dockerfile: Dockerfile
     profiles: [datadog]
     environment:
-      DD_AGENT_HOST: datadog
-      DD_TRACE_AGENT_PORT: "8126"
+      # Envia traces diretamente ao datadogreceiver do BindPlane (formato /v0.4/traces)
+      # Evita o formato /api/v0.2/traces que o Datadog Agent usa para backend
+      DD_TRACE_AGENT_URL: http://bindplane-agent:8088
       DD_SERVICE: demo-app
       DD_ENV: demo
       DD_VERSION: "1.0.0"
       DD_TRACES_APP: ${DD_TRACES_APP:-false}
-    depends_on:
-      - datadog
     restart: unless-stopped
 
 volumes:

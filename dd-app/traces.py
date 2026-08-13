@@ -71,9 +71,8 @@ if not ENABLED:
     while True:
         time.sleep(30)
 
-agent_host = os.getenv('DD_AGENT_HOST', 'datadog')
-agent_port = os.getenv('DD_TRACE_AGENT_PORT', '8126')
-log.info('Trace generator iniciado → %s:%s', agent_host, agent_port)
+agent_url = os.getenv('DD_TRACE_AGENT_URL', 'http://bindplane-agent:8088')
+log.info('Trace generator iniciado → %s', agent_url)
 
 while True:
     scenario = random.choice(SCENARIOS)
